@@ -2,7 +2,6 @@
 import asyncio
 import contextlib
 import hashlib
-import io
 import json
 import logging
 import os
@@ -10,7 +9,6 @@ import re
 import secrets
 import threading
 import time
-import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -24,7 +22,7 @@ from pydantic import BaseModel, Field
 
 from helper.config import Settings, effective, valid_origin
 from helper.store import Store, digest
-from helper import mail
+from helper import mail, bundles
 
 COOKIE = '__Host-email-link-helper'
 ROOT = Path(__file__).resolve().parent
@@ -132,8 +130,11 @@ def create_app(state_dir=None, secret_dir=None, run_worker=True):
         return response
 
     @app.exception_handler(RequestValidationError)
-    async def invalid_request(_, __):
-        return JSONResponse({'detail': 'Invalid input; check field formats and required values'}, status_code=422)
+    async def invalid_request(_, error):
+        # Return field locations/messages, never Pydantic's input or context:
+        # request input can contain mailbox and web passwords.
+        errors = [{'path': list(e['loc'][1:]), 'message': e['msg']} for e in error.errors()]
+        return JSONResponse({'detail': 'Check the highlighted fields and try again', 'errors': errors}, status_code=422)
 
     @app.get('/health')
     def health():
@@ -175,16 +176,37 @@ def create_app(state_dir=None, secret_dir=None, run_worker=True):
 
     @app.get('/api/settings', dependencies=[Depends(web_auth)])
     def get_settings():
-        config, locked = effective(store.settings())
-        public = config.model_dump()
-        for p in public['providers']:
-            p['password'] = ''
+        with store.lock:
+            config, locked = effective(store.settings())
+            public = config.model_dump()
+            for p in public['providers']:
+                p['password'] = ''
+            revision = settings_revision(public)
+        password_sources = {}
+        for provider in config.providers:
+            prefix = 'MAIL_' + provider.id.upper().replace('-', '_') + '_PASSWORD'
+            password_sources[provider.id] = ('file' if (secret/f'{provider.id}-imap-password').exists() else
+                                             'env' if os.getenv(prefix) else 'saved' if provider.password else None)
         with status_lock:
             current = dict(status)
-        return dict(settings=public, locked=locked, status=current, origin=origin)
+        return dict(settings=public, locked=locked, status=current, origin=origin,
+                    password_sources=password_sources, revision=revision)
+
+    def settings_revision(public=None):
+        if public is None:
+            public = effective(store.settings())[0].model_dump()
+            for p in public['providers']:
+                p['password'] = ''
+        return digest(store.settings_version() + json.dumps(public, sort_keys=True))
 
     @app.put('/api/settings', dependencies=[Depends(web_auth), Depends(same_origin)])
-    def save_settings(body: Settings):
+    def save_settings(body: Settings, request: Request):
+        with store.lock:
+            if request.headers.get('if-match') and request.headers['if-match'] != settings_revision():
+                raise HTTPException(409, 'Settings changed in another tab. Close this form and refresh before editing again.')
+            return save_settings_locked(body)
+
+    def save_settings_locked(body):
         current, locked = effective(store.settings())
         data = body.model_dump()
         adjusted, _ = effective(data)
@@ -236,14 +258,7 @@ def create_app(state_dir=None, secret_dir=None, run_worker=True):
     def extension(browser: str):
         if browser not in ['chrome', 'firefox']:
             raise HTTPException(404)
-        manifest = json.loads((ROOT/f'extension/manifest.{browser}.json').read_text())
-        data = io.BytesIO()
-        with zipfile.ZipFile(data, 'w', zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr('manifest.json', json.dumps(manifest, indent=2))
-            for path in (ROOT/'extension').iterdir():
-                if path.suffix in ['.js', '.html', '.css', '.svg']:
-                    archive.write(path, path.name)
-        return Response(data.getvalue(), media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="email-link-helper-{browser}.zip"'})
+        return Response(bundles.build(browser), media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="email-link-helper-{browser}.zip"'})
 
     app.mount('/static', StaticFiles(directory=ROOT/'static'), name='static')
     return app

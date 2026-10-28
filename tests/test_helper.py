@@ -302,3 +302,39 @@ def test_downloads_correct_browser_manifest_without_credentials(web):
             assert ('service_worker' if browser == 'chrome' else 'scripts') in manifest['background']
             assert 'content_scripts' not in manifest
             assert not manifest.get('host_permissions')
+
+
+def test_settings_revision_prevents_stale_form_overwrites(web, provider, rule):
+    client, store = web
+    store.save_settings(Settings(providers=[provider], rules=[rule]).model_dump())
+    sign_in(client)
+    first = client.get('/api/settings').json()
+    assert client.get('/api/settings').json()['revision'] == first['revision']
+    candidate = first['settings']
+    candidate['providers'][0]['label'] = 'Updated name'
+    headers = GUARD | {'If-Match': first['revision']}
+    assert client.put('/api/settings', json=candidate, headers=headers).status_code == 200
+    latest = client.get('/api/settings').json()
+    assert latest['revision'] != first['revision']
+    candidate['providers'][0]['label'] = 'Stale tab'
+    response = client.put('/api/settings', json=candidate, headers=headers)
+    assert response.status_code == 409
+    assert store.settings()['providers'][0]['label'] == 'Updated name'
+
+
+def test_field_errors_never_echo_passwords_and_password_source_is_metadata(web, provider, rule, monkeypatch):
+    client, store = web
+    store.save_settings(Settings(providers=[provider], rules=[rule]).model_dump())
+    sign_in(client)
+    monkeypatch.setenv('MAIL_PROTON_PASSWORD', 'environment-password-do-not-echo')
+    config = client.get('/api/settings').json()
+    assert config['password_sources']['proton'] == 'env'
+    assert 'environment-password-do-not-echo' not in str(config)
+    candidate = config['settings']
+    candidate['providers'][0]['password'] = 'input-password-do-not-echo'
+    candidate['providers'][0]['port'] = 'bad-port'
+    response = client.put('/api/settings', json=candidate, headers=GUARD)
+    assert response.status_code == 422
+    assert response.json()['errors'][0]['path'] == ['providers', 0, 'port']
+    assert 'input-password-do-not-echo' not in response.text
+    assert all(set(error) == {'path', 'message'} for error in response.json()['errors'])

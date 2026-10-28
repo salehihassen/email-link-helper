@@ -7,3 +7,4 @@ state
 secrets
 *.env
 tests
+node_modules

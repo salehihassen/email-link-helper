@@ -53,6 +53,11 @@ class Store:
             row = db.execute('SELECT data FROM config WHERE id=1').fetchone()
             return json.loads(self.cipher.decrypt(row['data'])) if row else {}
 
+    def settings_version(self):
+        with self.db() as db:
+            row = db.execute('SELECT data FROM config WHERE id=1').fetchone()
+            return hashlib.sha256(row['data'] if row else b'').hexdigest()
+
     def save_settings(self, data):
         with self.db() as db:
             db.execute('INSERT OR REPLACE INTO config VALUES(1,?)', (self.cipher.encrypt(json.dumps(data).encode()),))

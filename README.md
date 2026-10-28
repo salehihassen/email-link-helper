@@ -5,12 +5,13 @@ Chrome/Firefox extension. New links produce a badge; opening always needs a
 click. The helper never follows sign-in links, loads tracking images, sends
 mail, or marks messages read. Other message bodies are ignored.
 
-Source lives here. Compose, Caddy, inventory and backup declarations belong in
-the sibling `homelab-infra/hosts/server-1/email-link-helper` directory. Runtime
-configuration belongs under `/opt/email-link-helper`, outside either checkout.
+It is meant for a home server or similar host on a private network: a LAN, or a
+VPN/mesh network such as Tailscale or WireGuard. You need Docker (or Python
+3.13), a TLS reverse proxy such as Caddy, nginx or Traefik, and a certificate
+your browsers trust. Keep runtime configuration and secrets outside the checkout.
 
-See [SECURITY.md](SECURITY.md) for the network-peer threat model, encryption,
-credential boundaries, audit evidence and local-host limitations.
+See [SECURITY.md](SECURITY.md) for the network-peer threat model, deployment
+assumptions, encryption, credential boundaries and local-host limitations.
 
 ## Setup
 
@@ -25,10 +26,17 @@ credential boundaries, audit evidence and local-host limitations.
    `SECRET_DIR=/path/to/secrets STATE_DIR=/path/to/state python manage.py init --claude`.
    This generates a Fernet encryption key and seeds the Claude rule. Do not
    regenerate the key for an existing database.
-4. Build `docker build -t email-link-helper:0.1.0 .`, then start the relay/app from
-   the infra repo. The app runs `uvicorn app:create_app --factory`; only loopback
-   8904 is published. Caddy serves `PUBLIC_ORIGIN` on the existing Tailscale listener.
-5. Sign in, download the browser extension and create a separate device token
+4. Build `docker build -t email-link-helper:0.2.0 .` and run it with `secrets`
+   mounted at `/run/secrets`, `state` at `/state`, and your env file. The app
+   listens on port 8000 in the container; publish it on loopback only (for
+   example `-p 127.0.0.1:8904:8000`). For Bridge, also run `python relay.py`
+   from the same image inside Bridge's network namespace, and share the `run`
+   directory with both containers at `/mail`.
+5. Point your reverse proxy's `PUBLIC_ORIGIN` site at that loopback port, and
+   make sure it forwards the original `Host` header. Caddy does this by default;
+   nginx needs `proxy_set_header Host $host;`. Requests with any other host are
+   rejected.
+6. Sign in, download the browser extension and create a separate device token
    for each browser. Tokens are shown once and can be revoked. In extension
    Settings, paste your private HTTPS source and device token. Grant access
    only to that source. Destination hosts are separately allowlisted.
@@ -38,10 +46,21 @@ Firefox: unzip, open `about:debugging` → This Firefox → Load Temporary Add-o
 Permanent Firefox installation requires signing; the development ZIP is unsigned.
 Authenticated downloads include the correct browser-specific `manifest.json`.
 
+To update an unpacked Chrome installation, replace the files in the original
+extension directory and click **Reload** on its `chrome://extensions` card.
+Keep the same directory to retain its extension identity and saved settings.
+Version 0.2.0 shows **Unsaved changes**, **Saving…**, and **Saved · connected**;
+if a connection check fails after saving, it explicitly says the settings were
+saved and the connection needs attention. The popup content has rounded corners.
+
 ## Configuration
 
-The settings page edits validated JSON containing providers, rules, polling and
-expiry. Providers support Bridge via pinned STARTTLS and a Unix socket, or
+The settings page provides forms to create, edit and delete providers and rules,
+plus polling/expiry controls. No JSON editing is required. Field-level validation
+explains invalid values; settings revisions prevent stale tabs from overwriting
+newer edits. Remove a provider's rules before deleting it. Environment-managed
+fields are visibly locked, and providers/rules supplied by the environment cannot
+be removed through the UI. Providers support Bridge via pinned STARTTLS and a Unix socket, or
 verified IMAPS (e.g. Zoho). Gmail is out of scope. Use provider app passwords
 where supported. UI passwords are encrypted and redacted on read; an empty
 password preserves the saved value.
@@ -97,26 +116,47 @@ can still access it. The app requires authentication in addition to private
 ingress. Settings use CSRF protection, secure opaque sessions, login rate limits,
 strict CSP and no-store responses. Access logs are disabled; URLs aren't logged.
 
-The deployed service is included in the infrastructure repo's nightly backup:
-configuration, credentials, encryption key and a SQLite **online backup** travel
-together. The live DB/journals and relay socket are excluded. Restore the staged
+For backups, keep configuration, credentials, encryption key and a SQLite
+**online backup** together, and encrypt them. Exclude the live DB/journals and
+relay socket. Restore the staged
 database with its matching key/credentials and saved ownership, then clear
 `queue` and `sessions` before starting. Device-token hashes/settings persist;
 revoke/re-pair devices if an older snapshot predates a token revocation.
 
 ## Development
 
-Install `requirements.lock` plus pytest/httpx in a virtual environment:
+Use Python 3.13 and Node 24.15+:
 
 ```sh
+python -m pip install -r requirements-dev.txt
+npm ci --ignore-scripts
+python scripts/check-ci.py
 python -m pytest -q
-node --test tests/extension.test.cjs
+npm run check:js
+npm test
+python scripts/package-extensions.py
+npm run check:extensions
 pip-audit -r requirements.lock
 ```
 
 The lock pins the production dependency graph. Tests use synthetic messages,
 cover security and delivery behavior, and never request real sign-in URLs.
 
+`.github/workflows/checks.yml` runs on pushes to `main`, pull requests and manual
+dispatch. It checks Python/JS syntax, backend and DOM/extension behavior, both
+browser bundles, Firefox manifest lint, and the production Docker build. It uses
+GitHub-hosted runners, SHA-pinned actions, a read-only contents token and checkout
+without persisted credentials. It references no secrets and performs no deployment
+or publication. The workflow uses `pull_request`, never `pull_request_target`.
+The policy check guards those choices. No private inbox, TLS, or homelab access is
+needed for CI, including fork PRs.
+
+JavaScript dependencies are development-only; none enter the service image or
+extension ZIPs. The pinned `web-ext` tool currently has an upstream low-severity
+`deepmerge` advisory in its lint dependency tree. It runs only in the isolated
+unprivileged check environment; avoid forced downgrades that drop MV3 support.
+
 Browser references: [Chrome network requests](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests),
 [Chrome alarms](https://developer.chrome.com/docs/extensions/reference/api/alarms),
 [Firefox background scripts](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background).
+CI design follows [GitHub's Actions security guidance](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions).

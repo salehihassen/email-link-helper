@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Email Link Helper",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Receive short-lived sign-in links from your private helper. Open only when you click.",
   "minimum_chrome_version": "120",
   "permissions": ["storage", "alarms"],

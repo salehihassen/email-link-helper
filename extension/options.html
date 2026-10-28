@@ -4,5 +4,5 @@
 <label>Device token<input id="token" type="password" autocomplete="off" required></label>
 <label>Allowed sign-in hosts<input id="hosts" value="claude.ai, platform.claude.com, console.anthropic.com" required></label>
 <p class="muted">Create a separate device token in the helper settings. This extension stores it on this browser only. Host access is requested only for your chosen source.</p>
-<button>Save and connect</button> <button id="disconnect" type="button" class="secondary">Disconnect</button></form><p id="status" role="status"></p>
+<div class="save-bar"><div><strong id="save-state" role="status" aria-live="polite">Loading settings…</strong><span id="status" class="save-detail" role="status" aria-live="polite"></span></div><button id="save" disabled>Save settings</button></div><button id="disconnect" type="button" class="secondary">Disconnect</button></form>
 </main><script src="options.js"></script></body></html>
