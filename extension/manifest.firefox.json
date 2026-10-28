@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Email Link Helper",
+  "version": "0.1.0",
+  "description": "Receive short-lived sign-in links from your private helper. Open only when you click.",
+  "permissions": ["storage", "alarms"],
+  "optional_host_permissions": ["https://*/*"],
+  "background": {"scripts": ["background.js"]},
+  "action": {"default_popup": "popup.html", "default_title": "Email Link Helper"},
+  "options_ui": {"page": "options.html", "open_in_tab": true},
+  "browser_specific_settings": {"gecko": {"id": "email-link-helper@private.example", "strict_min_version": "142.0", "data_collection_permissions": {"required": ["authenticationInfo", "personalCommunications"]}}},
+  "content_security_policy": {"extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'"}
+}

@@ -1,0 +1,8 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Email Link Helper · Settings</title><link rel="stylesheet" href="style.css"></head><body><main>
+<p class="eyebrow">EMAIL LINK HELPER</p><h1>Your private source.</h1><p>Connect to your helper over Tailscale. Sign-in links open only when you click.</p>
+<form id="settings"><label>Helper source<input id="source" type="url" placeholder="https://links.private.example" required></label>
+<label>Device token<input id="token" type="password" autocomplete="off" required></label>
+<label>Allowed sign-in hosts<input id="hosts" value="claude.ai, platform.claude.com, console.anthropic.com" required></label>
+<p class="muted">Create a separate device token in the helper settings. This extension stores it on this browser only. Host access is requested only for your chosen source.</p>
+<button>Save and connect</button> <button id="disconnect" type="button" class="secondary">Disconnect</button></form><p id="status" role="status"></p>
+</main><script src="options.js"></script></body></html>

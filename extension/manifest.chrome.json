@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Email Link Helper",
+  "version": "0.1.0",
+  "description": "Receive short-lived sign-in links from your private helper. Open only when you click.",
+  "minimum_chrome_version": "120",
+  "permissions": ["storage", "alarms"],
+  "optional_host_permissions": ["https://*/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_popup": "popup.html", "default_title": "Email Link Helper"},
+  "options_ui": {"page": "options.html", "open_in_tab": true},
+  "content_security_policy": {"extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'"}
+}
