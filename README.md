@@ -144,7 +144,9 @@ cover security and delivery behavior, and never request real sign-in URLs.
 
 `.github/workflows/checks.yml` runs on pushes to `main`, pull requests and manual
 dispatch. It checks Python/JS syntax, backend and DOM/extension behavior, both
-browser bundles, Firefox manifest lint, and the production Docker build. It uses
+browser bundles, Firefox manifest lint, and the production Docker build. Firefox
+lint runs first in its own job and must pass before the build job starts; it hands
+no artifacts or outputs to that job. It uses
 GitHub-hosted runners, SHA-pinned actions, a read-only contents token and checkout
 without persisted credentials. It references no secrets and performs no deployment
 or publication. The workflow uses `pull_request`, never `pull_request_target`.

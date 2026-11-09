@@ -18,4 +18,9 @@ for job in workflow['jobs'].values():
             assert re.fullmatch(r'actions/[a-z-]+@[a-f0-9]{40}', step['uses'])
         if step.get('uses', '').startswith('actions/checkout@'):
             assert step['with']['persist-credentials'] == 'false'
-print('CI policy: public PR trigger, hosted runner, read-only token, pinned actions, no deployment secrets.')
+jobs = workflow['jobs']
+# Lint must gate the build, but share nothing with it beyond pass/fail.
+assert jobs['sanity']['needs'] == 'lint-extensions'
+assert 'outputs' not in jobs['lint-extensions']
+assert 'upload-artifact' not in text and 'download-artifact' not in text
+print('CI policy: public PR trigger, hosted runner, read-only token, pinned actions, no deployment secrets, isolated lint gate.')
