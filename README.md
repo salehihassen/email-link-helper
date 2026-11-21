@@ -136,7 +136,7 @@ npm run check:js
 npm test
 python scripts/package-extensions.py
 npm run check:extensions
-pip-audit -r requirements.lock
+pip-audit -r requirements-prod.txt
 ```
 
 The lock pins the production dependency graph. Tests use synthetic messages,
